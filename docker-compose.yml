@@ -1,15 +1,35 @@
 version: "3.9"
+
 services:
   web:
     image: urnau/app1-php:prod-nginx-php-fpm8.2.3
-    container_name: web
+    container_name: API-CATEGORIAS
     build:
       context: .
       dockerfile: ./docker/Dockerfile
       args:
         PHP_VERSION: '8.2.4-fpm-bullseye'
-    # volumes:
-    #   - ./app:/var/www/app
     ports:
-      - "80:80" #http
-      - "443:443" #https
+      - "7070:70"
+      - "7443:443"
+    networks:
+      my_network:
+        ipv4_address: 192.168.0.10
+    environment:
+      APP_ENV: production
+      APP_DEBUG: false
+    volumes:
+      - ./path/on/host:/path/in/container
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  my_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.0.0/24

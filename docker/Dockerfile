@@ -1,18 +1,21 @@
+# Define a versão do PHP como argumento
 ARG PHP_VERSION
+
+# Usa a imagem base do PHP com a versão especificada
 FROM php:${PHP_VERSION}
 
-## Diretório da aplicação
+# Define o diretório da aplicação como argumento
 ARG APP_DIR=/var/www/app
 
-## Versão da Lib do Redis para PHP
+# Define a versão da biblioteca Redis para PHP como argumento
 ARG REDIS_LIB_VERSION=5.3.7
 
-### apt-utils é um extensão de recursos do gerenciador de pacotes APT
+# Instala apt-utils e supervisor
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    apt-utils \ 
+    apt-utils \
     supervisor
 
-# dependências recomendadas de desenvolvido para ambiente linux
+# Instala dependências comuns para desenvolvimento PHP
 RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     libzip-dev \
@@ -21,39 +24,47 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libxml2-dev
 
-RUN docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pgsql session xml
+# Instala extensões PHP necessárias
+RUN docker-php-ext-install mysqli pdo pdo_mysql pdo_pgsql pgsql session xml zip iconv simplexml pcntl gd fileinfo
 
-# habilita instalação do Redis
+# Instala e habilita extensão Redis para PHP
 RUN pecl install redis-${REDIS_LIB_VERSION} \
-    && docker-php-ext-enable redis 
+    && docker-php-ext-enable redis
 
-RUN docker-php-ext-install zip iconv simplexml pcntl gd fileinfo
-
-# Composer
+# Instala o Composer globalmente
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
+# Copia arquivos de configuração do Supervisor
 COPY ./docker/supervisord/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY ./docker/supervisord/conf /etc/supervisord.d/
-### Supervisor permite monitorar e controlar vários processos (LINUX)
-### Bastante utilizado para manter processos em Daemon, ou seja, executando em segundo plano
 
-COPY ./docker/php/extra-php.ini "$PHP_INI_DIR/99_extra.ini"
-COPY ./docker/php/extra-php-fpm.conf /etc/php8/php-fpm.d/www.conf
+# Copia arquivos de configuração adicional do PHP
+COPY ./docker/php/extra-php.ini "$PHP_INI_DIR/conf.d/99_extra.ini"
+COPY ./docker/php/extra-php-fpm.conf /etc/php/${PHP_VERSION}/php-fpm.d/www.conf
 
+# Define o diretório de trabalho como APP_DIR
 WORKDIR $APP_DIR
-RUN cd $APP_DIR
-RUN chown www-data:www-data $APP_DIR
 
+# Copia a aplicação para o diretório de trabalho
 COPY --chown=www-data:www-data ./app .
-RUN rm -rf vendor
-RUN composer install --no-interaction
 
+# Define as permissões corretas para o diretório da aplicação
+RUN chown -R www-data:www-data $APP_DIR
+
+# Remove a pasta vendor se existir (limpeza anterior)
+RUN rm -rf vendor
+
+# Instala as dependências do Composer sem interação
+RUN composer install --no-interaction || true
+
+# Instala o Nginx e configurações
 RUN apt-get install nginx -y
 RUN rm -rf /etc/nginx/sites-enabled/* && rm -rf /etc/nginx/sites-available/*
 COPY ./docker/nginx/sites.conf /etc/nginx/sites-enabled/default.conf
 COPY ./docker/nginx/error.html /var/www/html/error.html
 
+# Limpa o cache do apt e remove listas de pacotes
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-# RUN apt update -y && apt install nano git -y
 
+# Define o comando padrão para iniciar o Supervisor
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
